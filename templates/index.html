@@ -1,0 +1,679 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8"/><meta name="viewport" content="width=device-width,initial-scale=1"/>
+<title>PathfinderAI v3 — Deterministic Adaptive Engine</title>
+<link href="https://fonts.googleapis.com/css2?family=Bebas+Neue&family=DM+Sans:wght@300;400;500;600&family=JetBrains+Mono:wght@400;500;600&display=swap" rel="stylesheet"/>
+<style>
+*,*::before,*::after{box-sizing:border-box;margin:0;padding:0}
+:root{
+  --bg:#04060e;--surface:#080d1a;--card:#0d1526;--border:rgba(255,255,255,0.06);
+  --cyan:#00e5ff;--cyan-dim:rgba(0,229,255,0.08);--cyan-mid:rgba(0,229,255,0.2);
+  --green:#00e676;--green-dim:rgba(0,230,118,0.08);
+  --gold:#ffd166;--gold-dim:rgba(255,209,102,0.08);
+  --red:#ff4757;--red-dim:rgba(255,71,87,0.08);
+  --purple:#a78bfa;--purple-dim:rgba(167,139,250,0.08);
+  --orange:#ff9f43;
+  --text:#e2e8f0;--muted:#4b5563;--muted2:#6b7280;
+  --fh:'Bebas Neue',sans-serif;--fb:'DM Sans',sans-serif;--fm:'JetBrains Mono',monospace;
+  --r:14px;
+}
+html{scroll-behavior:smooth}
+body{background:var(--bg);color:var(--text);font-family:var(--fb);min-height:100vh;overflow-x:hidden}
+.grid-bg{position:fixed;inset:0;z-index:0;pointer-events:none;
+  background-image:linear-gradient(rgba(0,229,255,.02) 1px,transparent 1px),linear-gradient(90deg,rgba(0,229,255,.02) 1px,transparent 1px);
+  background-size:56px 56px;animation:gd 25s linear infinite}
+@keyframes gd{to{background-position:56px 56px}}
+.orb{position:fixed;border-radius:50%;filter:blur(130px);pointer-events:none;z-index:0;animation:op 9s ease-in-out infinite}
+.o1{width:600px;height:600px;background:rgba(0,229,255,.03);top:-150px;right:-150px}
+.o2{width:500px;height:500px;background:rgba(167,139,250,.025);bottom:-100px;left:-100px;animation-delay:-4s}
+@keyframes op{0%,100%{opacity:.5;transform:scale(1)}50%{opacity:1;transform:scale(1.08)}}
+.wrap{position:relative;z-index:1;max-width:1300px;margin:0 auto;padding:0 2rem 5rem}
+
+/* Header */
+header{display:flex;align-items:center;justify-content:space-between;padding:2rem 0 1.5rem;border-bottom:1px solid var(--border)}
+.logo{display:flex;align-items:center;gap:.75rem}
+.logo-icon{width:42px;height:42px;border-radius:11px;border:1.5px solid var(--cyan);display:flex;align-items:center;justify-content:center;font-size:1.3rem;background:var(--cyan-dim);box-shadow:0 0 25px rgba(0,229,255,.2)}
+.logo-text{font-family:var(--fh);font-size:1.9rem;letter-spacing:3px;color:#fff}
+.logo-text span{color:var(--cyan)}
+.vbadge{font-family:var(--fm);font-size:.6rem;padding:.2rem .55rem;border-radius:99px;border:1px solid rgba(0,229,255,.25);color:var(--cyan);background:var(--cyan-dim)}
+
+/* Hero */
+.hero{padding:3rem 0 2rem;text-align:center}
+.hero h1{font-family:var(--fh);font-size:clamp(2.6rem,6vw,4.8rem);letter-spacing:4px;line-height:1;color:#fff;margin-bottom:1.2rem}
+.hero h1 .acc{color:var(--cyan);text-shadow:0 0 40px rgba(0,229,255,.4)}
+.hero p{color:var(--muted2);font-size:1rem;max-width:520px;margin:0 auto 1.75rem;line-height:1.75}
+.chips{display:flex;gap:.55rem;justify-content:center;flex-wrap:wrap}
+.chip{font-family:var(--fm);font-size:.65rem;padding:.25rem .7rem;border-radius:99px;border:1px solid var(--border);background:var(--surface);color:var(--muted2)}
+.chip.c{border-color:var(--cyan-mid);color:var(--cyan);background:var(--cyan-dim)}
+.chip.g{border-color:rgba(0,230,118,.25);color:var(--green);background:var(--green-dim)}
+.chip.p{border-color:rgba(167,139,250,.25);color:var(--purple);background:var(--purple-dim)}
+.chip.o{border-color:rgba(255,159,67,.25);color:var(--orange);background:rgba(255,159,67,.08)}
+
+/* Card */
+.card{background:var(--card);border:1px solid var(--border);border-radius:var(--r);padding:1.6rem;transition:border-color .2s}
+.sec-lbl{font-family:var(--fm);font-size:.65rem;color:var(--cyan);text-transform:uppercase;letter-spacing:2px;margin-bottom:.7rem;display:flex;align-items:center;gap:.45rem}
+.sec-lbl::before{content:'';display:block;width:12px;height:1px;background:var(--cyan)}
+
+/* Form */
+.form-grid{display:grid;grid-template-columns:1fr 1fr;gap:1.2rem;margin-bottom:1.2rem}
+@media(max-width:700px){.form-grid{grid-template-columns:1fr}}
+.flbl{font-size:.78rem;color:var(--muted2);font-weight:500;margin-bottom:.4rem;display:flex;align-items:center;gap:.35rem}
+.flbl .d{width:6px;height:6px;border-radius:50%;background:var(--cyan)}
+.flbl .d.g{background:var(--green)}
+.drop{border:1.5px dashed rgba(0,229,255,.25);border-radius:12px;background:rgba(0,229,255,.02);padding:2rem 1rem;text-align:center;cursor:pointer;transition:all .2s;position:relative}
+.drop:hover,.drop.over{border-color:var(--cyan);background:var(--cyan-dim)}
+.drop input{position:absolute;inset:0;opacity:0;cursor:pointer}
+.drop-icon{font-size:1.7rem;margin-bottom:.5rem}
+.drop-t{font-size:.88rem;font-weight:500;color:#fff;margin-bottom:.18rem}
+.drop-s{font-size:.7rem;color:var(--muted2)}.drop.has .drop-s{color:var(--cyan)}
+textarea{width:100%;min-height:160px;background:var(--surface);border:1.5px solid var(--border);border-radius:12px;color:var(--text);font-family:var(--fb);font-size:.86rem;padding:.85rem .95rem;resize:vertical;transition:border-color .2s;line-height:1.6}
+textarea:focus{outline:none;border-color:rgba(0,230,118,.3)}
+textarea::placeholder{color:var(--muted)}
+input[type=password]{width:100%;padding:.7rem .95rem;background:var(--surface);border:1.5px solid var(--border);border-radius:10px;color:var(--text);font-family:var(--fm);font-size:.82rem;transition:border-color .2s}
+input[type=password]:focus{outline:none;border-color:rgba(0,229,255,.3)}
+
+/* Simulation toggle */
+.sim-row{display:flex;align-items:center;gap:.75rem;margin-bottom:1.2rem;flex-wrap:wrap}
+.sim-lbl{font-family:var(--fm);font-size:.68rem;color:var(--muted2);text-transform:uppercase;letter-spacing:1px;margin-right:.25rem}
+.sim-btn{font-family:var(--fm);font-size:.7rem;padding:.35rem .9rem;border-radius:8px;border:1px solid var(--border);background:transparent;color:var(--muted2);cursor:pointer;transition:all .2s}
+.sim-btn:hover{border-color:var(--cyan);color:var(--cyan)}
+.sim-btn.active{background:var(--cyan-dim);border-color:var(--cyan);color:var(--cyan)}
+.sim-btn.beg.active{background:rgba(0,230,118,.1);border-color:var(--green);color:var(--green)}
+.sim-btn.adv.active{background:var(--red-dim);border-color:var(--red);color:var(--red)}
+
+.api-row{display:flex;gap:1rem;align-items:flex-end;margin-bottom:1.2rem}
+.api-row .f{flex:1}
+.btn{padding:.78rem 1.7rem;border-radius:10px;border:none;cursor:pointer;font-family:var(--fh);letter-spacing:1.5px;font-size:.9rem;transition:all .2s;display:flex;align-items:center;gap:.5rem;white-space:nowrap}
+.btn-p{background:var(--cyan);color:#000;box-shadow:0 0 25px rgba(0,229,255,.25)}
+.btn-p:hover{box-shadow:0 0 45px rgba(0,229,255,.45);transform:translateY(-1px)}
+.btn-p:disabled{opacity:.4;cursor:not-allowed;transform:none;box-shadow:none}
+.btn-s{background:transparent;border:1px solid var(--border);color:var(--muted2);font-size:.75rem;padding:.55rem 1rem}
+.btn-s:hover{border-color:var(--cyan);color:var(--cyan)}
+.err-box{background:var(--red-dim);border:1px solid rgba(255,71,87,.3);border-radius:10px;padding:.85rem 1.2rem;color:#fca5a5;font-size:.84rem;display:none}
+.err-box.show{display:block}
+
+/* Loading + Log */
+.analysis-layout{display:grid;grid-template-columns:1fr 310px;gap:1.5rem;align-items:start}
+@media(max-width:840px){.analysis-layout{grid-template-columns:1fr}}
+#loading{display:none}
+.spinner{width:50px;height:50px;border-radius:50%;margin:0 auto 1.5rem;border:2.5px solid var(--border);border-top-color:var(--cyan);animation:spin 1s linear infinite}
+@keyframes spin{to{transform:rotate(360deg)}}
+.lsteps{display:flex;flex-direction:column;gap:.4rem;align-items:center}
+.ls{font-family:var(--fm);font-size:.75rem;color:var(--muted);transition:color .3s}
+.ls.active{color:var(--cyan)}.ls.done{color:var(--green)}
+.log-panel{background:#05070f;border:1px solid var(--border);border-radius:var(--r);overflow:hidden;position:sticky;top:1.5rem;max-height:430px;display:flex;flex-direction:column}
+.log-hdr{padding:.65rem .9rem;border-bottom:1px solid var(--border);display:flex;align-items:center;gap:.5rem;flex-shrink:0}
+.log-title{font-family:var(--fm);font-size:.65rem;color:var(--muted2);text-transform:uppercase;letter-spacing:1.5px;flex:1}
+.ldot{width:7px;height:7px;border-radius:50%;background:var(--muted);transition:background .3s}
+.ldot.a{background:var(--cyan);box-shadow:0 0 8px var(--cyan);animation:blink 1s ease-in-out infinite}
+.ldot.d{background:var(--green);box-shadow:0 0 8px var(--green);animation:none}
+@keyframes blink{0%,100%{opacity:1}50%{opacity:.25}}
+.log-body{flex:1;overflow-y:auto;padding:.5rem 0;font-family:var(--fm);font-size:.68rem;line-height:1.7}
+.log-body::-webkit-scrollbar{width:3px}.log-body::-webkit-scrollbar-thumb{background:var(--border);border-radius:2px}
+.ll{display:flex;gap:.45rem;padding:.07rem .85rem;animation:ls .18s ease forwards;opacity:0}
+@keyframes ls{from{opacity:0;transform:translateX(-4px)}to{opacity:1;transform:translateX(0)}}
+.ll-ts{color:#1f2937;flex-shrink:0}.ll-ic{flex-shrink:0}.ll-msg{color:#374151;word-break:break-word}
+.ll.ok .ll-msg{color:#34d399}.ll.error .ll-msg{color:#f87171}
+.ll.warn .ll-msg{color:#fbbf24}.ll.info .ll-msg{color:#60a5fa}
+.log-empty{padding:1.5rem 1rem;text-align:center;color:var(--muted);font-family:var(--fm);font-size:.68rem}
+.log-ftr{padding:.4rem .85rem;border-top:1px solid var(--border);font-family:var(--fm);font-size:.6rem;color:var(--muted);display:flex;justify-content:space-between;flex-shrink:0}
+
+/* Results */
+#results{display:none;animation:fadeUp .45s ease forwards}
+@keyframes fadeUp{from{opacity:0;transform:translateY(20px)}to{opacity:1;transform:translateY(0)}}
+.top-bar{display:flex;align-items:center;gap:1rem;margin-bottom:1.75rem;flex-wrap:wrap;padding-bottom:1.5rem;border-bottom:1px solid var(--border)}
+.role-name{font-family:var(--fh);font-size:2.1rem;letter-spacing:1.5px;color:#fff}
+
+/* Strategy box */
+.strategy-box{background:linear-gradient(135deg,rgba(0,229,255,.05),rgba(167,139,250,.05));border:1px solid rgba(0,229,255,.15);border-radius:var(--r);padding:1.2rem 1.5rem;margin-bottom:1.75rem}
+.strategy-title{font-family:var(--fm);font-size:.68rem;color:var(--cyan);text-transform:uppercase;letter-spacing:1.5px;margin-bottom:.6rem}
+.strategy-text{font-size:.86rem;color:#94a3b8;line-height:1.7}
+
+/* Simulation badge */
+.sim-badge{display:inline-flex;align-items:center;gap:.4rem;font-family:var(--fm);font-size:.7rem;padding:.3rem .85rem;border-radius:8px;border:1px solid var(--border)}
+.sim-badge.beg{border-color:rgba(0,230,118,.3);color:var(--green);background:var(--green-dim)}
+.sim-badge.int{border-color:rgba(0,229,255,.3);color:var(--cyan);background:var(--cyan-dim)}
+.sim-badge.adv{border-color:rgba(255,71,87,.3);color:var(--red);background:var(--red-dim)}
+
+/* Metrics */
+.metrics{display:grid;grid-template-columns:repeat(5,1fr);gap:.85rem;margin-bottom:1.75rem}
+@media(max-width:700px){.metrics{grid-template-columns:repeat(3,1fr)}}
+.met{background:var(--card);border:1px solid var(--border);border-radius:12px;padding:1rem 1.1rem;text-align:center;transition:transform .2s}
+.met:hover{transform:translateY(-2px)}
+.met-val{font-family:var(--fh);font-size:2.2rem;letter-spacing:1px;line-height:1}
+.met-lbl{font-size:.68rem;color:var(--muted2);margin-top:.3rem;text-transform:uppercase;letter-spacing:.5px}
+.met:nth-child(1) .met-val{color:var(--cyan)}
+.met:nth-child(2) .met-val{color:var(--green)}
+.met:nth-child(3) .met-val{color:var(--gold)}
+.met:nth-child(4) .met-val{color:var(--purple)}
+.met:nth-child(5) .met-val{color:var(--orange)}
+
+/* Phase bar */
+.phase-wrap{background:var(--card);border:1px solid var(--border);border-radius:var(--r);padding:1.3rem;margin-bottom:1.75rem}
+.phase-track{display:flex;height:22px;border-radius:7px;overflow:hidden;gap:2px;margin:.85rem 0 .65rem}
+.phase-seg{display:flex;align-items:center;justify-content:center;font-family:var(--fm);font-size:.6rem;font-weight:600;transition:flex .8s ease}
+.phase-seg.revise{background:rgba(255,209,102,.22);color:var(--gold)}
+.phase-seg.learn{background:rgba(0,229,255,.18);color:var(--cyan)}
+.phase-seg.master{background:rgba(255,71,87,.2);color:var(--red)}
+.phase-legend{display:flex;gap:1.25rem;font-size:.72rem;color:var(--muted2);flex-wrap:wrap}
+.phase-legend span{display:flex;align-items:center;gap:.35rem}
+.pdot{width:7px;height:7px;border-radius:2px}
+
+/* Dependency chains */
+.dep-chains{background:var(--surface);border:1px solid var(--border);border-radius:var(--r);padding:1.2rem;margin-bottom:1.75rem}
+.dep-chain{font-family:var(--fm);font-size:.75rem;color:#60a5fa;padding:.35rem .6rem;background:rgba(96,165,250,.06);border-radius:6px;border:1px solid rgba(96,165,250,.15);display:inline-block;margin:.25rem .25rem 0 0}
+.dep-chain .arrow{color:var(--muted2);margin:0 .3rem}
+
+/* Results grid */
+.results-grid{display:grid;grid-template-columns:1fr 360px;gap:1.4rem;margin-bottom:1.75rem}
+@media(max-width:920px){.results-grid{grid-template-columns:1fr}}
+
+/* Skill bars */
+.skill-row{display:flex;align-items:center;gap:.7rem;padding:.5rem 0;border-bottom:1px solid rgba(255,255,255,.035)}
+.skill-row:last-child{border:none}
+.skill-name{font-size:.78rem;font-weight:500;min-width:120px;flex-shrink:0}
+.sbar-wrap{flex:1;height:5px;background:var(--border);border-radius:99px;overflow:hidden}
+.sbar-fill{height:100%;border-radius:99px;transition:width 1s ease}
+.slvl{font-family:var(--fm);font-size:.65rem;color:var(--muted2);min-width:28px;text-align:right}
+
+/* Gap table */
+.gap-row{display:flex;align-items:center;gap:.55rem;padding:.5rem 0;border-bottom:1px solid rgba(255,255,255,.035)}
+.gap-row:last-child{border:none}
+.gap-skill{font-size:.78rem;font-weight:500;flex:1}
+.gap-score{font-family:var(--fm);font-size:.65rem;color:var(--gold);min-width:36px;text-align:right}
+.gtag{font-family:var(--fm);font-size:.62rem;padding:.18rem .55rem;border-radius:5px}
+.gtag.revise{background:rgba(255,209,102,.1);border:1px solid rgba(255,209,102,.3);color:var(--gold)}
+.gtag.learn{background:rgba(0,229,255,.09);border:1px solid rgba(0,229,255,.22);color:var(--cyan)}
+.gtag.master{background:var(--red-dim);border:1px solid rgba(255,71,87,.28);color:var(--red)}
+.gtag.skip{background:var(--green-dim);border:1px solid rgba(0,230,118,.22);color:var(--green)}
+
+/* Roadmap */
+.roadmap-list{display:flex;flex-direction:column}
+.sw{display:flex;gap:1.1rem;position:relative;animation:si .42s ease forwards;opacity:0}
+@keyframes si{from{opacity:0;transform:translateX(-14px)}to{opacity:1;transform:translateX(0)}}
+.sw:not(:last-child)::after{content:'';position:absolute;left:17px;top:40px;width:2px;height:calc(100% - 4px);background:linear-gradient(to bottom,var(--cyan-dim),transparent)}
+.sn{flex-shrink:0;width:36px;height:36px;border-radius:50%;border:2px solid var(--cyan);background:var(--bg);display:flex;align-items:center;justify-content:center;font-family:var(--fm);font-size:.78rem;color:var(--cyan);box-shadow:0 0 12px rgba(0,229,255,.2);z-index:1;margin-top:4px}
+.sb{flex:1;background:var(--card);border:1px solid var(--border);border-radius:var(--r);padding:1.1rem 1.3rem;margin-bottom:.9rem;transition:border-color .2s,box-shadow .2s}
+.sb:hover{border-color:rgba(0,229,255,.25);box-shadow:0 4px 18px rgba(0,0,0,.35)}
+.st{display:flex;align-items:flex-start;justify-content:space-between;gap:.6rem;flex-wrap:wrap;margin-bottom:.55rem}
+.ss{font-size:.95rem;font-weight:600;color:#fff;line-height:1.3}
+.sm{font-family:var(--fm);font-size:.62rem;color:var(--muted2)}
+.pills{display:flex;flex-wrap:wrap;gap:.38rem;margin-bottom:.55rem}
+.pill{font-family:var(--fm);font-size:.6rem;padding:.18rem .55rem;border-radius:5px;border:1px solid var(--border);color:var(--muted2)}
+.pill.hours{border-color:rgba(0,229,255,.22);color:var(--cyan);background:var(--cyan-dim)}
+.pill.wks{border-color:rgba(167,139,250,.22);color:var(--purple);background:var(--purple-dim)}
+.pill.gap{border-color:rgba(255,71,87,.22);color:var(--red);background:var(--red-dim)}
+.pill.imp{border-color:rgba(255,209,102,.22);color:var(--gold);background:var(--gold-dim)}
+.pill.score{border-color:rgba(255,159,67,.3);color:var(--orange);background:rgba(255,159,67,.08);font-weight:600}
+.pill.rank{border-color:rgba(0,229,255,.35);color:var(--cyan);background:rgba(0,229,255,.12);font-weight:600}
+
+/* Level bars */
+.lcomp{display:flex;flex-direction:column;gap:.25rem;margin-bottom:.55rem}
+.lrow-lbl{font-size:.67rem;color:var(--muted2);display:flex;justify-content:space-between;margin-bottom:.18rem}
+.lbar{height:4px;background:var(--border);border-radius:99px;overflow:hidden;margin-bottom:.18rem}
+.lbar-f{height:100%;border-radius:99px;transition:width 1.2s ease}
+.lbar-u{background:rgba(100,116,139,.45)}
+.lbar-r{background:var(--cyan)}
+
+/* Dep tags on step */
+.dep-tags{display:flex;flex-wrap:wrap;gap:.3rem;margin-bottom:.5rem}
+.dep-tag{font-family:var(--fm);font-size:.6rem;padding:.15rem .5rem;border-radius:4px;background:rgba(96,165,250,.07);border:1px solid rgba(96,165,250,.18);color:#93c5fd}
+
+/* Reasoning */
+.reasoning{margin-top:.5rem;padding:.55rem .8rem;background:rgba(255,209,102,.04);border-left:2px solid var(--gold);border-radius:0 5px 5px 0;font-size:.74rem;color:#9ca3af;line-height:1.6}
+.reasoning::before{content:'⚡ ';color:var(--gold)}
+
+/* Validation */
+.val-grid{display:grid;grid-template-columns:repeat(4,1fr);gap:.7rem;margin-top:.85rem}
+@media(max-width:600px){.val-grid{grid-template-columns:repeat(2,1fr)}}
+.vc{background:var(--surface);border:1px solid var(--border);border-radius:10px;padding:.85rem;text-align:center}
+.vv{font-family:var(--fh);font-size:1.7rem;color:var(--cyan)}
+.vl{font-size:.65rem;color:var(--muted2);margin-top:.2rem}
+
+::-webkit-scrollbar{width:5px}::-webkit-scrollbar-track{background:var(--bg)}::-webkit-scrollbar-thumb{background:var(--border);border-radius:3px}
+</style>
+</head>
+<body>
+<div class="grid-bg"></div>
+<div class="orb o1"></div><div class="orb o2"></div>
+<div class="wrap">
+
+<!-- HEADER -->
+<header>
+  <div class="logo">
+    <div class="logo-icon">🧭</div>
+    <div class="logo-text">PATHFINDER<span>AI</span></div>
+  </div>
+  <div style="display:flex;align-items:center;gap:.6rem">
+    <span class="vbadge">v3.0</span>
+    <span style="font-family:var(--fm);font-size:.6rem;color:var(--muted)">Deterministic Engine · FastAPI · Gemini 2.5</span>
+  </div>
+</header>
+
+<!-- HERO -->
+<section class="hero">
+  <h1>DETERMINISTIC.<br><span class="acc">EXPLAINABLE.</span></h1>
+  <p>Upload resume + JD. A weighted scoring engine computes your personalised, dependency-ordered learning roadmap — no LLM decision-making.</p>
+  <div class="chips">
+    <span class="chip c">⚡ Gemini 2.5 Flash</span>
+    <span class="chip g">⚙ Deterministic Skill Gap Engine</span>
+    <span class="chip p">→ Weighted Adaptive Pathing</span>
+    <span class="chip o">🔍 Explainable Decision Trace</span>
+    <span class="chip">🎮 Simulation Mode</span>
+    <span class="chip">⛓ Dependency Graph</span>
+  </div>
+</section>
+
+<!-- INPUT -->
+<div id="input-section">
+  <div class="sec-lbl">Configure Analysis</div>
+  <div class="card">
+    <div class="form-grid">
+      <div>
+        <div class="flbl"><span class="d"></span>Resume PDF</div>
+        <div class="drop" id="dz">
+          <input type="file" id="rf" accept=".pdf" onchange="onFile(this)"/>
+          <div class="drop-icon">📄</div>
+          <div class="drop-t">Drop PDF or click to browse</div>
+          <div class="drop-s" id="fl">Standard text-based PDF</div>
+        </div>
+      </div>
+      <div style="display:flex;flex-direction:column">
+        <div class="flbl"><span class="d g"></span>Job Description</div>
+        <textarea id="jdt" placeholder="Paste full job description..."></textarea>
+      </div>
+    </div>
+
+    <!-- Simulation toggle -->
+    <div class="sim-row">
+      <span class="sim-lbl">Simulation Mode:</span>
+      <button class="sim-btn beg" onclick="setSim('beginner')" id="sb-beg">👶 Beginner (−2)</button>
+      <button class="sim-btn active" onclick="setSim('intermediate')" id="sb-int">⚡ Intermediate</button>
+      <button class="sim-btn adv" onclick="setSim('advanced')" id="sb-adv">🚀 Advanced (+2)</button>
+      <span id="sim-hint" style="font-family:var(--fm);font-size:.65rem;color:var(--muted2)">Adjusts user levels before gap computation</span>
+    </div>
+
+    <div class="api-row">
+      <div class="f">
+        <div class="flbl"><span class="d"></span>Gemini API Key</div>
+        <input type="password" id="ak" placeholder="AIza..."/>
+      </div>
+      <button class="btn btn-p" id="abtn" onclick="run()">🧠 ANALYZE</button>
+    </div>
+    <div class="err-box" id="eb"></div>
+  </div>
+</div>
+
+<!-- LOADING -->
+<div id="loading">
+  <div class="analysis-layout">
+    <div style="text-align:center;padding:3rem 0">
+      <div class="spinner"></div>
+      <div class="lsteps">
+        <div class="ls" id="ls1">📄 Parsing PDF...</div>
+        <div class="ls" id="ls2">🧠 [EXTRACTOR] Gemini: resume skills...</div>
+        <div class="ls" id="ls3">🧠 [EXTRACTOR] Gemini: JD requirements...</div>
+        <div class="ls" id="ls4">⚙️ [SKILL GAP ENGINE] Weighted scoring...</div>
+        <div class="ls" id="ls5">⛓ [DEPENDENCY ENGINE] Prerequisite graph...</div>
+        <div class="ls" id="ls6">🗺️ [PATH GENERATOR] Building roadmap...</div>
+      </div>
+    </div>
+    <div class="log-panel">
+      <div class="log-hdr">
+        <span class="ldot" id="ld"></span>
+        <span class="log-title">Engine Log</span>
+        <span id="lc" style="font-family:var(--fm);font-size:.6rem;color:var(--muted)">0 lines</span>
+      </div>
+      <div class="log-body" id="lb"><div class="log-empty" id="le">Waiting...</div></div>
+      <div class="log-ftr"><span>PathfinderAI v3 · Deterministic</span><span id="lt">0.0s</span></div>
+    </div>
+  </div>
+</div>
+
+<!-- RESULTS -->
+<div id="results">
+  <div class="top-bar">
+    <div>
+      <div style="font-family:var(--fm);font-size:.65rem;color:var(--muted2);text-transform:uppercase;letter-spacing:1px;margin-bottom:.2rem">Target Role</div>
+      <div class="role-name" id="rn">—</div>
+    </div>
+    <div id="simBadge"></div>
+    <div style="margin-left:auto;display:flex;gap:.55rem">
+      <button class="btn btn-s" onclick="resetForm()">← New Analysis</button>
+    </div>
+  </div>
+
+  <!-- Strategy explanation -->
+  <div class="strategy-box">
+    <div class="strategy-title">⚙ Weighted Adaptive Pathing Algorithm — Strategy</div>
+    <div class="strategy-text" id="strat">—</div>
+  </div>
+
+  <!-- Metrics -->
+  <div class="metrics">
+    <div class="met"><div class="met-val" id="m1">0</div><div class="met-lbl">Roadmap Steps</div></div>
+    <div class="met"><div class="met-val" id="m2">0h</div><div class="met-lbl">Training Hours</div></div>
+    <div class="met"><div class="met-val" id="m3">0w</div><div class="met-lbl">Est. Duration</div></div>
+    <div class="met"><div class="met-val" id="m4">0</div><div class="met-lbl">Skills to Develop</div></div>
+    <div class="met"><div class="met-val" id="m5">0</div><div class="met-lbl">Critical Gaps</div></div>
+  </div>
+
+  <!-- Phase timeline -->
+  <div class="phase-wrap">
+    <div class="sec-lbl">Learning Timeline</div>
+    <div class="phase-track" id="pt"></div>
+    <div class="phase-legend">
+      <span><span class="pdot" style="background:rgba(255,209,102,.5)"></span>🔄 Revise <span id="pl-r">0h</span></span>
+      <span><span class="pdot" style="background:rgba(0,229,255,.4)"></span>📘 Learn <span id="pl-l">0h</span></span>
+      <span><span class="pdot" style="background:rgba(255,71,87,.4)"></span>🔥 Master <span id="pl-m">0h</span></span>
+    </div>
+  </div>
+
+  <!-- Dependency chains -->
+  <div class="dep-chains" id="depSection" style="display:none">
+    <div class="sec-lbl">⛓ Dependency Chains Detected</div>
+    <div id="depChains"></div>
+  </div>
+
+  <!-- Results grid -->
+  <div class="results-grid">
+    <div>
+      <div class="sec-lbl">Adaptive Learning Roadmap</div>
+      <div style="font-family:var(--fm);font-size:.68rem;color:var(--muted2);margin-bottom:1.1rem">
+        Dependency-ordered · priority-score ranked · time-estimated
+      </div>
+      <div class="roadmap-list" id="rl"></div>
+    </div>
+    <div style="display:flex;flex-direction:column;gap:1.2rem">
+      <div class="card"><div class="sec-lbl">Your Skills</div><div id="rsl"></div></div>
+      <div class="card">
+        <div class="sec-lbl">Skill Gaps — Priority Ranked</div>
+        <div style="font-family:var(--fm);font-size:.62rem;color:var(--muted2);margin-bottom:.6rem">score = (gap × 0.6) + (importance × 0.4)</div>
+        <div id="gl"></div>
+      </div>
+    </div>
+  </div>
+
+  <!-- Validation metrics -->
+  <div class="card">
+    <div class="sec-lbl">Engine Validation Metrics</div>
+    <div style="font-size:.78rem;color:var(--muted2)">Deterministic quality scores — computed by the gap engine, not by Gemini.</div>
+    <div class="val-grid" id="vg"></div>
+  </div>
+</div>
+</div>
+
+<script>
+// ── State ─────────────────────────────────────────────────────────────────────
+let simMode = 'intermediate', evtSrc = null, logTimer = null, logStart = 0, logCount = 0;
+const LICON = {info:'›',ok:'✓',warn:'⚠',error:'✕'};
+
+// ── Sim toggle ────────────────────────────────────────────────────────────────
+function setSim(m) {
+  simMode = m;
+  document.querySelectorAll('.sim-btn').forEach(b => b.classList.remove('active'));
+  document.getElementById('sb-'+m.slice(0,3)).classList.add('active');
+  const hints = {beginner:'Levels reduced by 2 — harder roadmap',intermediate:'Baseline analysis',advanced:'Levels increased by 2 — easier roadmap'};
+  document.getElementById('sim-hint').textContent = hints[m];
+}
+
+// ── Drop zone ─────────────────────────────────────────────────────────────────
+const dz = document.getElementById('dz');
+dz.addEventListener('dragover', e => { e.preventDefault(); dz.classList.add('over') });
+dz.addEventListener('dragleave', () => dz.classList.remove('over'));
+dz.addEventListener('drop', e => {
+  e.preventDefault(); dz.classList.remove('over');
+  const f = e.dataTransfer.files[0];
+  if (f?.type==='application/pdf') { document.getElementById('rf').files=e.dataTransfer.files; onFile({files:e.dataTransfer.files}) }
+});
+function onFile(i) {
+  const f = i.files[0];
+  if (f) { document.getElementById('fl').textContent='✓ '+f.name; dz.classList.add('has') }
+}
+
+// ── Log panel ─────────────────────────────────────────────────────────────────
+function alog(level, msg, ts) {
+  const b = document.getElementById('lb');
+  document.getElementById('le')?.remove();
+  const el = document.createElement('div');
+  el.className=`ll ${level}`;
+  el.innerHTML=`<span class="ll-ts">${ts}</span><span class="ll-ic">${LICON[level]||'›'}</span><span class="ll-msg">${msg}</span>`;
+  b.appendChild(el); b.scrollTop=b.scrollHeight;
+  document.getElementById('lc').textContent=(++logCount)+' lines';
+}
+function openSSE(sid) {
+  evtSrc = new EventSource(`/logs/${sid}`);
+  document.getElementById('ld').className='ldot a';
+  evtSrc.onmessage = e => {
+    if (e.data==='__CONNECTED__') return;
+    if (e.data==='__DONE__') { evtSrc.close(); document.getElementById('ld').className='ldot d'; clearInterval(logTimer); return; }
+    try {
+      const {ts,level,msg} = JSON.parse(e.data);
+      alog(level,msg,ts);
+      if (msg.includes('PDF parsed'))        stepDone(1);
+      else if (msg.includes('Resume:'))      stepDone(2);
+      else if (msg.includes('JD:'))          stepDone(3);
+      else if (msg.includes('Gap engine'))   stepDone(4);
+      else if (msg.includes('Dependency'))   stepDone(5);
+      else if (msg.includes('Roadmap:'))     stepDone(6);
+    } catch {}
+  };
+  evtSrc.onerror = () => { evtSrc.close(); clearInterval(logTimer) };
+}
+function stepDone(n) {
+  for(let i=1;i<=n;i++){document.getElementById('ls'+i)?.classList.add('done');document.getElementById('ls'+i)?.classList.remove('active')}
+  if(n<6) document.getElementById('ls'+(n+1))?.classList.add('active');
+}
+
+// ── Main ──────────────────────────────────────────────────────────────────────
+async function run() {
+  const ak=document.getElementById('ak').value.trim();
+  const jd=document.getElementById('jdt').value.trim();
+  const fi=document.getElementById('rf');
+  const eb=document.getElementById('eb');
+  eb.classList.remove('show');
+  if(!ak) return err('Enter your Gemini API key.');
+  if(!jd) return err('Paste a job description.');
+  if(!fi.files[0]) return err('Upload a resume PDF.');
+
+  logCount=0;
+  document.getElementById('lb').innerHTML='<div class="log-empty" id="le">Connecting...</div>';
+  document.getElementById('lc').textContent='0 lines';
+  document.getElementById('lt').textContent='0.0s';
+  document.getElementById('ld').className='ldot';
+
+  document.getElementById('input-section').style.display='none';
+  document.getElementById('loading').style.display='block';
+  document.getElementById('results').style.display='none';
+  document.getElementById('abtn').disabled=true;
+  for(let i=1;i<=6;i++) document.getElementById('ls'+i).className='ls';
+  document.getElementById('ls1').classList.add('active');
+
+  const sid = crypto.randomUUID();
+  openSSE(sid);
+  logStart=Date.now();
+  logTimer=setInterval(()=>{document.getElementById('lt').textContent=((Date.now()-logStart)/1000).toFixed(1)+'s'},100);
+
+  await new Promise(r=>setTimeout(r,250));
+
+  const form=new FormData();
+  form.append('api_key',ak); form.append('jd_text',jd);
+  form.append('resume',fi.files[0]); form.append('sid',sid);
+  form.append('sim_mode',simMode);
+
+  try {
+    const res=await fetch('/api/analyze',{method:'POST',body:form});
+    const data=await res.json();
+    if(!res.ok) throw new Error(data.detail||'Server error');
+    await new Promise(r=>setTimeout(r,500));
+    render(data);
+  } catch(e) {
+    if(evtSrc) evtSrc.close(); clearInterval(logTimer);
+    document.getElementById('loading').style.display='none';
+    document.getElementById('input-section').style.display='block';
+    err(e.message);
+  } finally { document.getElementById('abtn').disabled=false; }
+}
+
+// ── Render ────────────────────────────────────────────────────────────────────
+function render(d) {
+  document.getElementById('loading').style.display='none';
+  document.getElementById('results').style.display='block';
+
+  // Role
+  const role = d.jd_skills?.[0] ? 'Target Role' : 'Target Role';
+  document.getElementById('rn').textContent = 'Target Role';
+
+  // Simulation badge
+  const sm = d.simulation || {};
+  const scls = {beginner:'beg',intermediate:'int',advanced:'adv'};
+  const icons = {beginner:'👶',intermediate:'⚡',advanced:'🚀'};
+  document.getElementById('simBadge').innerHTML =
+    `<span class="sim-badge ${scls[sm.mode]||'int'}">${icons[sm.mode]||'⚡'} ${(sm.mode||'intermediate').toUpperCase()} MODE</span>`;
+
+  // Strategy
+  document.getElementById('strat').textContent = d.strategy_explanation || '';
+
+  // Metrics
+  animN('m1', d.roadmap?.length||0, '');
+  animN('m2', d.total_hours||0, 'h');
+  animN('m3', Math.ceil(d.total_weeks||0), 'w');
+  animN('m4', d.metrics?.skills_to_develop||0, '');
+  animN('m5', d.metrics?.critical_gaps||0, '');
+
+  // Phase bar
+  renderPhase(d.phase_breakdown||{});
+
+  // Dependency chains
+  const chains = d.dependency_chains||[];
+  if(chains.length) {
+    document.getElementById('depSection').style.display='block';
+    document.getElementById('depChains').innerHTML = chains.map(c => {
+      const parts = c.split(' → ');
+      return `<span class="dep-chain">${parts.map((p,i)=>i<parts.length-1?`${p}<span class="arrow">→</span>`:p).join('')}</span>`;
+    }).join('');
+  }
+
+  // Resume skills
+  renderSkillBars('rsl', d.resume_skills||[]);
+
+  // Gap list
+  renderGaps('gl', d.all_gaps||[]);
+
+  // Roadmap
+  renderRoadmap(d.roadmap||[]);
+
+  // Validation
+  renderVal(d.metrics||{});
+
+  document.getElementById('results').scrollIntoView({behavior:'smooth'});
+}
+
+function renderPhase(pb) {
+  const t=document.getElementById('pt');
+  const total=Object.values(pb).reduce((s,p)=>s+(p.hours||0),0)||1;
+  t.innerHTML='';
+  ['revise','learn','master'].forEach(k=>{
+    const p=pb[k]||{}; const pct=Math.round((p.hours||0)/total*100);
+    if(!pct) return;
+    const s=document.createElement('div'); s.className=`phase-seg ${k}`; s.style.flex=pct;
+    s.textContent=pct>8?pct+'%':'';
+    t.appendChild(s);
+    document.getElementById('pl-'+k[0]).textContent=(p.hours||0)+'h';
+  });
+}
+
+function renderSkillBars(cid, skills) {
+  const c=document.getElementById(cid); c.innerHTML='';
+  skills.forEach((s,i)=>{
+    const pct=(s.level/10*100).toFixed(0);
+    const col=s.level>=7?'#34d399':s.level>=4?'#60a5fa':'#9ca3af';
+    const el=document.createElement('div'); el.className='skill-row';
+    el.innerHTML=`<span class="skill-name">${s.name}</span><div class="sbar-wrap"><div class="sbar-fill" style="width:0%;background:${col}" data-p="${pct}"></div></div><span class="slvl">${s.level}/10</span>`;
+    c.appendChild(el);
+    setTimeout(()=>el.querySelector('.sbar-fill').style.width=pct+'%', i*40+200);
+  });
+}
+
+function renderGaps(cid, gaps) {
+  const c=document.getElementById(cid); c.innerHTML='';
+  [...gaps].sort((a,b)=>(b.priority_score||0)-(a.priority_score||0)).forEach(g=>{
+    const el=document.createElement('div'); el.className='gap-row';
+    const rank=g.rank?`#${g.rank}`:'✓';
+    el.innerHTML=`<span class="gap-skill">${g.skill}</span><span class="gtag ${g.priority}">${g.priority}</span><span class="gap-score" title="priority score">${(g.priority_score||0).toFixed(1)}</span>`;
+    c.appendChild(el);
+  });
+}
+
+function renderRoadmap(roadmap) {
+  const list=document.getElementById('rl'); list.innerHTML='';
+  roadmap.forEach((item,idx)=>{
+    const w=document.createElement('div'); w.className='sw'; w.style.animationDelay=(idx*65)+'ms';
+    const up=(item.user_level/10*100).toFixed(0), rp=(item.required_level/10*100).toFixed(0);
+    const deps=item.dependencies||[];
+    const depHtml=deps.length?`<div class="dep-tags">${deps.map(d=>`<span class="dep-tag">⛓ requires: ${d}</span>`).join('')}</div>`:'';
+    w.innerHTML=`
+      <div class="sn">${item.step}</div>
+      <div class="sb">
+        <div class="st">
+          <div class="ss">${item.skill}</div>
+          <div class="sm">${item.milestone||''}</div>
+        </div>
+        <div class="pills">
+          <span class="pill rank">Rank #${item.rank||'—'}</span>
+          <span class="pill score">Score ${(item.priority_score||0).toFixed(2)}</span>
+          <span class="pill hours">⏱ ${item.estimated_hours}h</span>
+          <span class="pill wks">📅 ~${item.estimated_weeks}w</span>
+          <span class="pill gap">↑ gap ${item.gap}</span>
+          <span class="pill imp">★ imp ${item.importance}/10</span>
+          <span class="gtag ${item.priority}" style="font-size:.6rem">${item.priority_label||item.priority}</span>
+        </div>
+        ${depHtml}
+        <div class="lcomp">
+          <div class="lrow-lbl"><span style="color:var(--muted2)">Your level ${item.user_level}/10</span><span style="color:var(--cyan)">Required ${item.required_level}/10</span></div>
+          <div class="lbar"><div class="lbar-f lbar-u" style="width:${up}%"></div></div>
+          <div class="lbar"><div class="lbar-f lbar-r" data-w="${rp}%" style="width:0%"></div></div>
+        </div>
+        ${item.reason?`<div class="reasoning">${item.reason}</div>`:''}
+      </div>`;
+    list.appendChild(w);
+    setTimeout(()=>w.querySelector('.lbar-r').style.width=rp+'%', idx*65+400);
+  });
+}
+
+function renderVal(m) {
+  const items=[
+    {l:'Gap Coverage', v:(m.gap_coverage_pct||0)+'%'},
+    {l:'Avg Gap Score', v:(m.avg_gap||0).toFixed(1)},
+    {l:'Avg Priority Score', v:(m.avg_priority_score||0).toFixed(2)},
+    {l:'Ordering Score', v:(m.ordering_score_pct||100)+'%'},
+    {l:'Critical Gaps', v:m.critical_gaps||0},
+    {l:'Matched Skills', v:m.matched_skills||0},
+    {l:'Max Gap', v:m.max_gap||0},
+    {l:'Total JD Skills', v:m.total_jd_skills||0},
+  ];
+  document.getElementById('vg').innerHTML=items.map(i=>
+    `<div class="vc"><div class="vv">${i.v}</div><div class="vl">${i.l}</div></div>`).join('');
+}
+
+// ── Helpers ───────────────────────────────────────────────────────────────────
+function animN(id,target,sfx) {
+  const el=document.getElementById(id); let c=0;
+  const iv=setInterval(()=>{c=Math.min(c+Math.max(1,Math.floor(target/40)),target);el.textContent=c+sfx;if(c>=target)clearInterval(iv)},28);
+}
+function err(m){const b=document.getElementById('eb');b.textContent='⚠ '+m;b.classList.add('show')}
+function resetForm() {
+  if(evtSrc){evtSrc.close();evtSrc=null} clearInterval(logTimer);
+  document.getElementById('results').style.display='none';
+  document.getElementById('input-section').style.display='block';
+  document.getElementById('jdt').value='';
+  document.getElementById('rf').value='';
+  document.getElementById('fl').textContent='Standard text-based PDF';
+  document.getElementById('dz').classList.remove('has');
+  document.getElementById('eb').classList.remove('show');
+  window.scrollTo({top:0,behavior:'smooth'});
+}
+</script>
+</body>
+</html>
