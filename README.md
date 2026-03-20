@@ -38,6 +38,14 @@ uvicorn main:app --reload --port 8000
 Open **http://localhost:8000**
 
 ---
+## API KEY---"AIzaSyC01AXKtGgXdIqL1pw0alPg6xfyLspEXV0"
+
+##IF ANY ERROR PLEASE FOLLOW THE BELOW STEPS
+
+Get a free Gemini API key at:
+https://aistudio.google.com/app/apikey
+Enter it in the UI before clicking Analyze.
+
 
 ## 🏗 Architecture
 
